@@ -35,6 +35,156 @@ class SpreedlyGemTest < Test::Unit::TestCase
       assert_equal two.id, subscribers.first.id
     end
 
+    context "payment api" do
+      context "creating an invoice" do
+        setup do
+          @regular_plan = find_plan("Test Regular Plan")
+        end
+
+        should "accept subscriber attributes" do
+          customer_id = "33"
+          Spreedly::Invoice.create!(@regular_plan.id, :subscriber => { :customer_id => customer_id, :email => "how@hot.com", :screen_name => "Money Giva!"})
+          assert_equal "Money Giva!", Spreedly::Subscriber.find(customer_id).screen_name
+        end
+
+        should "create a subscriber" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+          assert_equal customer_id, invoice.subscriber.id
+        end
+
+        should "generate an invoice token" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+          assert_not_nil invoice.token
+        end
+
+        should "generate an open invoice" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+          assert !invoice.closed?
+        end
+
+        should "add invoice to existing subscriber" do
+          subscriber = Spreedly::Subscriber.create!('joe')
+          invoice = create_invoice(@regular_plan.id, subscriber.id)
+          assert_equal subscriber.id, invoice.subscriber.id
+        end
+
+        should "have 1 line item when first subscribing to a plan" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+          assert_equal 1, invoice.line_items.size
+        end
+
+        should "expose attributes of line items" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+          line_item = invoice.line_items.first
+          assert_kind_of BigDecimal, line_item.amount
+          assert_kind_of String, line_item.description
+        end
+
+        should "have 2 line items when upgrading/downgrading to different feature levels" do
+          @plus_plan = find_plan("Test Plus Plan")
+          assert_not_equal @plus_plan.feature_level, @regular_plan.feature_level, "For this test to pass, the feature levels must be different for the two plans."
+
+          customer_id              = "33"
+          invoice_for_regular_plan = create_invoice(@regular_plan.id, customer_id)
+          assert_equal 1, invoice_for_regular_plan.line_items.size
+          invoice_for_regular_plan.pay(credit_card)
+
+          invoice_for_plus_plan = create_invoice(@plus_plan.id, customer_id)
+          assert_equal 2, invoice_for_plus_plan.line_items.size
+        end
+
+        should "raise error when no subscription plan exists" do
+          customer_id = 33
+          plan_id     = 1000000000
+          ex = assert_raise(RuntimeError) do 
+            invoice = create_invoice(plan_id, customer_id)
+          end
+
+          assert_match /the subscription plan does not exist/i, ex.message
+        end
+
+        should "raise error when passing invalid request elements" do
+          customer_id = 33
+          ex = assert_raise(RuntimeError) do 
+            invoice = create_invoice(@regular_plan.id, customer_id, :extra_invalid_element => "hey")
+          end
+
+          assert_match /extra_invalid_element/i, ex.message
+        end
+      end
+
+      context "paying an invoice" do
+        setup do
+          @regular_plan = find_plan("Test Regular Plan")
+        end
+
+        should "close invoice" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+          invoice.pay(credit_card)
+          assert invoice.closed?
+        end
+
+        should "be able to pay using invoice token" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+          assert !Spreedly::Subscriber.find(customer_id).active?
+          Spreedly::Invoice.pay(credit_card, invoice.token)
+          assert Spreedly::Subscriber.find(customer_id).active?
+        end
+
+        should "activate subscriber" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+
+          assert !invoice.subscriber.active?
+
+          invoice.pay(credit_card)
+
+          assert invoice.subscriber.active?
+        end
+
+        should "raise error when payment fails verification" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+          ex = assert_raise(RuntimeError) do
+            invoice.pay(credit_card(:unauthorized))
+          end
+          assert_match /Charge not authorized/i, ex.message
+        end
+        
+        should "raise error when gateway times out" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+          ex = assert_raise(RuntimeError) do
+            invoice.pay(credit_card(:gw_unavailable))
+          end
+          assert_match /the payment system is not responding/i, ex.message
+        end
+
+        should "raise error if invoice can't be found with given token" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+
+          #override token, so we can't find it on system
+          def invoice.token
+            "iloveruby"
+          end
+
+          ex = assert_raise(RuntimeError) do
+            invoice.pay(credit_card)
+          end
+
+          assert_match /Unable to find invoice/i, ex.message
+        end
+      end
+    end
+
     context "adding a subscriber" do
       should "generate a token" do
         subscriber = Spreedly::Subscriber.create!('joe')
@@ -107,14 +257,14 @@ class SpreedlyGemTest < Test::Unit::TestCase
     end
     
     should "generate a subscribe url" do
-      assert_equal "https://spreedly.com/terralien-test/subscribers/joe/subscribe/1/Joe%20Bob",
+      assert_equal "https://spreedly.com/#{Spreedly.site_name}/subscribers/joe/subscribe/1/Joe%20Bob",
         Spreedly.subscribe_url('joe', '1', "Joe Bob")
-      assert_equal "https://spreedly.com/terralien-test/subscribers/joe/subscribe/1/",
+      assert_equal "https://spreedly.com/#{Spreedly.site_name}/subscribers/joe/subscribe/1/",
         Spreedly.subscribe_url('joe', '1')
     end
     
     should "generate an edit subscriber url" do
-      assert_equal "https://spreedly.com/terralien-test/subscriber_accounts/zetoken",
+      assert_equal "https://spreedly.com/#{Spreedly.site_name}/subscriber_accounts/zetoken",
         Spreedly.edit_subscriber_url('zetoken')
     end
     
@@ -255,5 +405,38 @@ class SpreedlyGemTest < Test::Unit::TestCase
   
   def create_subscriber(id=(rand*100000000).to_i, email=nil, screen_name=nil)
     Spreedly::Subscriber.create!(id, email, screen_name)
+  end
+
+  def create_invoice(plan_id, customer_id, extra_options = {})
+    Spreedly::Invoice.create!(plan_id, :subscriber => { :customer_id => customer_id, :email => "how@hot.com"}.merge(extra_options))
+  end
+
+  def credit_card(type = :good)
+    number = case type
+    when :good
+      "4222222222222"
+    when :unauthorized
+      "4012888888881881"
+    when :gw_unavailable
+      "4111111111111111"
+    else
+      raise "Expected either :good, unauthorized, or :gw_unavailable."
+    end
+    {
+      :number => number, 
+      :verification_value => "234", 
+      :month => "11", 
+      :year => "2010", 
+      :first_name => "Fred", 
+      :last_name => "Mogul",
+      :card_type => "visa"
+    }
+  end
+
+  def find_plan(name)
+    @all_plans ||= Spreedly::SubscriptionPlan.all
+    plan = @all_plans.detect { |e| e.name == name }
+    assert plan, "For this test to pass in REAL mode you must have a plan named #{name}"
+    plan
   end
 end
