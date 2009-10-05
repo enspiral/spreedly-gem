@@ -29,8 +29,16 @@ the http://spreedly.com API. Created by Terralien[http://terralien.com].
   ## Payment API
   invoice = Spreedly::Invoice.create!('plan_id', :subscriber => { :customer_id => 'customer_id, :email => "how@hot.com"})
   puts invoice.closed? # Nope!
-  invoice.pay(credit_card) OR Spreedly::Invoice.pay(credit_card, invoice.token)
+  invoice.pay(credit_card)
   puts invoice.closed? # Yep!
+
+  OR 
+
+  invoice = Spreedly::Invoice.create!('plan_id', :subscriber => { :customer_id => 'customer_id, :email => "how@hot.com"})
+  Spreedly::Invoice.pay(credit_card, invoice.token)
+  Spreedly::Subscriber.find(customer_id).active? # Nope!
+  Spreedly::Invoice.pay(credit_card, invoice.token)
+  Spreedly::Subscriber.find(customer_id).active? # Yep!
 
 
   # For fast tests
