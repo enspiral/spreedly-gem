@@ -149,6 +149,16 @@ class SpreedlyGemTest < Test::Unit::TestCase
           assert invoice.subscriber.active?
         end
 
+        should "raise RetryError when there are errors in fields" do
+          customer_id = "33"
+          invoice = create_invoice(@regular_plan.id, customer_id)
+          ex = assert_raise(Spreedly::RetryError) do
+            invoice.pay(:number => "411111111111")
+          end
+          assert_match /Payment verification failed./i, ex.message
+          assert_equal 9, ex.errors.size
+        end
+
         should "raise error when payment fails verification" do
           customer_id = "33"
           invoice = create_invoice(@regular_plan.id, customer_id)
@@ -158,13 +168,14 @@ class SpreedlyGemTest < Test::Unit::TestCase
           assert_match /Charge not authorized/i, ex.message
         end
         
-        should "raise error when gateway times out" do
+        should "raise RetryError when gateway times out" do
           customer_id = "33"
           invoice = create_invoice(@regular_plan.id, customer_id)
-          ex = assert_raise(RuntimeError) do
+          ex = assert_raise(Spreedly::RetryError) do
             invoice.pay(credit_card(:gw_unavailable))
           end
-          assert_match /the payment system is not responding/i, ex.message
+          assert_match /A timeout has occured which prevented your payment from t/i, ex.message
+          assert ex.errors.empty?
         end
 
         should "raise error if invoice can't be found with given token" do

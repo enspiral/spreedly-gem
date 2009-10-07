@@ -32,6 +32,14 @@ so we can improve it. Thanks!
 module Spreedly
   REAL = "real" # :nodoc:
 
+  class RetryError < RuntimeError # :nodoc: all
+    attr_accessor :errors
+    def initialize(message, errors = [])
+      @errors  = errors
+      super message
+    end
+  end
+
   include HTTParty
   headers 'Accept' => 'text/xml'
   headers 'Content-Type' => 'text/xml'
@@ -254,8 +262,17 @@ module Spreedly
     def self.pay(cc_data, invoice_token)
       result = Spreedly.put("/invoices/#{invoice_token}/pay.xml", 
         :body => Spreedly.to_xml_params(:payment => { :credit_card => cc_data }))
-      result.code.to_s =~ /2../ ? result :
-        raise("Could not pay invoice. Result code: #{result.code}; result body: #{result.body}.")
+      case result.code.to_s 
+      when /2../ 
+        result
+      when "422"
+        errors = [*result['errors']].collect{|e| e.last}.flatten
+        raise Spreedly::RetryError.new("Payment verification failed.", errors)
+      when "504"
+        raise Spreedly::RetryError.new("A timeout has occured which prevented your payment from taking place. Please try again.")
+      else
+        raise "Could not pay invoice. Result code: #{result.code}; result body: #{result.body}."
+      end
     end
 
     #
