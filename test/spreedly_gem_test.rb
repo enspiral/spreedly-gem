@@ -276,9 +276,9 @@ class SpreedlyGemTest < Test::Unit::TestCase
     end
     
     should "generate a subscribe url" do
-      assert_equal "https://spreedly.com/#{Spreedly.site_name}/subscribers/joe/subscribe/1/Joe%20Bob",
+      assert_equal "https://spreedly.com/#{Spreedly.site_name}/subscribers/joe/subscribe/1?first_name=Joe%20Bob",
         Spreedly.subscribe_url('joe', '1', :first_name => "Joe Bob")
-      assert_equal "https://spreedly.com/#{Spreedly.site_name}/subscribers/joe/subscribe/1/",
+      assert_equal "https://spreedly.com/#{Spreedly.site_name}/subscribers/joe/subscribe/1",
         Spreedly.subscribe_url('joe', '1')
     end
     
