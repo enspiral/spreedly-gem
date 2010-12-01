@@ -106,7 +106,7 @@ class SpreedlyGemTest < Test::Unit::TestCase
             invoice = create_invoice(plan_id, customer_id)
           end
 
-          assert_match /the subscription plan does not exist/i, ex.message
+          assert_match(/the subscription plan does not exist/i, ex.message)
         end
 
         should "raise error when passing invalid request elements" do
@@ -115,7 +115,7 @@ class SpreedlyGemTest < Test::Unit::TestCase
             invoice = create_invoice(@regular_plan.id, customer_id, :extra_invalid_element => "hey")
           end
 
-          assert_match /extra_invalid_element/i, ex.message
+          assert_match(/extra_invalid_element/i, ex.message)
         end
       end
 
@@ -156,7 +156,7 @@ class SpreedlyGemTest < Test::Unit::TestCase
           ex = assert_raise(Spreedly::RetryError) do
             invoice.pay(:number => "411111111111")
           end
-          assert_match /Payment verification failed./i, ex.message
+          assert_match(/Payment verification failed./i, ex.message)
           assert_equal 9, ex.errors.size
         end
 
@@ -166,7 +166,7 @@ class SpreedlyGemTest < Test::Unit::TestCase
           ex = assert_raise(RuntimeError) do
             invoice.pay(credit_card(:unauthorized))
           end
-          assert_match /Charge not authorized/i, ex.message
+          assert_match(/Charge not authorized/i, ex.message)
         end
         
         should "raise RetryError when gateway times out" do
@@ -175,7 +175,7 @@ class SpreedlyGemTest < Test::Unit::TestCase
           ex = assert_raise(Spreedly::RetryError) do
             invoice.pay(credit_card(:gw_unavailable))
           end
-          assert_match /A timeout has occured which prevented your payment from t/i, ex.message
+          assert_match(/A timeout has occured which prevented your payment from t/i, ex.message)
           assert ex.errors.empty?
         end
 
@@ -192,7 +192,7 @@ class SpreedlyGemTest < Test::Unit::TestCase
             invoice.pay(credit_card)
           end
 
-          assert_match /Unable to find invoice/i, ex.message
+          assert_match(/Unable to find invoice/i, ex.message)
         end
       end
     end
@@ -277,7 +277,7 @@ class SpreedlyGemTest < Test::Unit::TestCase
     
     should "generate a subscribe url" do
       assert_equal "https://spreedly.com/#{Spreedly.site_name}/subscribers/joe/subscribe/1/Joe%20Bob",
-        Spreedly.subscribe_url('joe', '1', "Joe Bob")
+        Spreedly.subscribe_url('joe', '1', :first_name => "Joe Bob")
       assert_equal "https://spreedly.com/#{Spreedly.site_name}/subscribers/joe/subscribe/1/",
         Spreedly.subscribe_url('joe', '1')
     end
@@ -477,8 +477,6 @@ class SpreedlyGemTest < Test::Unit::TestCase
   def create_subscriber(id=(rand*100000000).to_i, email=nil, screen_name=nil)
     Spreedly::Subscriber.create!(id, email, screen_name)
   end
-<<<<<<< HEAD
-=======
 
   def create_invoice(plan_id, customer_id, extra_options = {})
     Spreedly::Invoice.create!(plan_id, :subscriber => { :customer_id => customer_id, :email => "how@hot.com"}.merge(extra_options))
@@ -512,5 +510,4 @@ class SpreedlyGemTest < Test::Unit::TestCase
     assert plan, "For this test to pass in REAL mode you must have a plan named #{name}"
     plan
   end
->>>>>>> 3fce9a3026df521b5cc16f7a55ec6df5430301d4
 end
