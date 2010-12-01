@@ -32,6 +32,14 @@ so we can improve it. Thanks!
 module Spreedly
   REAL = "real" # :nodoc:
 
+  class RetryError < RuntimeError # :nodoc: all
+    attr_accessor :errors
+    def initialize(message, errors = [])
+      @errors  = errors
+      super message
+    end
+  end
+
   include HTTParty
   headers 'Accept' => 'text/xml'
   headers 'Content-Type' => 'text/xml'
@@ -267,4 +275,91 @@ module Spreedly
       (plan_type == 'free_trial')
     end
   end
+
+  #
+  # Classes below use the payment API to initiate transactions
+  #
+  class Invoice < Resource
+    def initialize(data)
+      update_invoice_data(data)
+    end
+
+    # Creates a new invoice on Spreedly. If subsciber exists, it will attach
+    # an invoice to them. Otherwise, a new subscriber is created.
+    #
+    # Usage:
+    #   Spreedly.Invoice.create!(1033, :subscriber => {:customer_id => "Cool name", :email => ""})
+    def self.create!(plan_id, options = {})
+      invoice = {:subscription_plan_id => plan_id}.merge(:subscriber => options[:subscriber])
+      result = Spreedly.post('/invoices.xml', :body => Spreedly.to_xml_params(:invoice => invoice))
+      if result.code.to_s =~ /2../
+        new(result)
+      else
+        #The errors documented in Spreedly's API docs, don't match reality. No point in
+        #being specific
+        raise "Could not create invoice. Result code: #{result.code}; result body: #{result.body}."
+      end
+    end
+
+    #
+    # Pays an invoice in instances where we don't have the invoice object ready.
+    # In this case, we'll need the invoice's token instead.
+    # 
+    # returns the result object if payment is successfull, otherwise an error is raised.
+    #
+    # The drawback here is that you'll have to parse the result object instead of Spreedly::Invoice
+    # doing for you. For that, you'd have to use the instance method pay
+    #
+    def self.pay(cc_data, invoice_token)
+      result = Spreedly.put("/invoices/#{invoice_token}/pay.xml", 
+        :body => Spreedly.to_xml_params(:payment => { :credit_card => cc_data }))
+      case result.code.to_s 
+      when /2../ 
+        result
+      when "422"
+        errors = [*result['errors']].collect{|e| e.last}.flatten
+        raise Spreedly::RetryError.new("Payment verification failed.", errors)
+      when "504"
+        raise Spreedly::RetryError.new("A timeout has occured which prevented your payment from taking place. Please try again.")
+      else
+        raise "Could not pay invoice. Result code: #{result.code}; result body: #{result.body}."
+      end
+    end
+
+    #
+    # Pays an invoice.
+    #
+    # Updates invoice object with returned results if successfull, otherwise an error is raised.
+    #
+    def pay(cc_data)
+      result = self.class.pay(cc_data, token)
+      update_invoice_data(result)
+    end
+
+    #
+    # Returns the subscriber that this invoice belongs to.
+    #
+    def subscriber
+      @subscriber ||= Subscriber.new(@subscriber_data)
+    end
+
+    #
+    # Returns the line items in this bill
+    #
+    def line_items
+      @line_items ||= @line_items_data.collect { |li| Spreedly::LineItem.new(li) }
+    end
+
+    private
+    def update_invoice_data(data)
+      @subscriber_data = data["invoice"].delete("subscriber")
+      @line_items_data = data["invoice"].delete("line_items")
+      @subscriber, @line_items = nil, nil
+      @data = data["invoice"]
+    end
+  end
+
+  class LineItem < Resource
+  end
+
 end

@@ -26,6 +26,10 @@ module Spreedly
       @attributes = self.class.attributes.inject({}){|a,(k,v)| a[k.to_sym] = v.call; a}
       params.each {|k,v| @attributes[k.to_sym] = v }
     end
+
+    def []=(att, value)
+      @attributes[att] = value 
+    end
     
     def id
       @attributes[:id]
@@ -41,7 +45,7 @@ module Spreedly
       end
     end
   end
-  
+
   class Subscriber < Resource
     self.attributes = {
       :created_at => proc{Time.now},
@@ -171,11 +175,91 @@ module Spreedly
         1 => new(:id => 1, :name => 'Default mock plan', :duration_quantity => 1, :duration_units => 'days'),
         2 => new(:id => 2, :name => 'Test Free Trial Plan', :plan_type => 'free_trial', :duration_quantity => 1, :duration_units => 'days'),
         3 => new(:id => 3, :name => 'Test Regular Plan', :duration_quantity => 1, :duration_units => 'days'),
+        4 => new(:id => 4, :name => 'Test Plus Plan', :duration_quantity => 1, :duration_units => 'days', :feature_level => "plus"),
       }
     end
     
     def trial?
       (plan_type == "free_trial")
     end
+  end
+
+  class Invoice < Resource
+    self.attributes = {
+      :created_at => proc{Time.now},
+      :token => proc{"valid_test_token"},
+      :active => proc{false},
+      :store_credit => proc{BigDecimal("0.0")},
+      :active_until => proc{nil},
+      :feature_level => proc{""},
+      :on_trial => proc{false},
+      :recurring => proc{false},
+      :closed    => proc{false}
+    }
+
+    def initialize(data)
+      @subscriber_data = data[:invoice].delete(:subscriber)
+      super
+    end
+
+    # Creates a new invoice on Spreedly. If subsciber exists, it will attach
+    # an invoice to them. Otherwise, a new subscriber is created.
+    #
+    # Usage:
+    #   Spreedly.Invoice.create!(1033, :subscriber => {:customer_id => "Cool name", :email => ""})
+    def self.create!(plan_id, options = {})
+      subscriber_options = options[:subscriber]
+      invoice = {:subscription_plan_id => plan_id }.merge(:subscriber => subscriber_options)
+
+      raise "extra_invalid_element" if options[:subscriber][:extra_invalid_element]
+
+      raise "the subscription plan does not exist" unless SubscriptionPlan.find(plan_id)
+
+      invoice = new(:invoice => invoice)
+
+      @subscriber = Subscriber.new(subscriber_options.merge(:active => false))
+      Subscriber.subscribers[@subscriber.id] = @subscriber unless Subscriber.subscribers[@subscriber.id]
+      invoice
+    end
+
+    def pay(cc_data)
+      @attributes[:closed] = true
+      subscriber[:active]  = true
+      raise "Unable to find invoice" unless token == "valid_test_token"
+      case cc_data[:number]
+      when "4012888888881881"
+        raise "Charge not authorized"
+      when "4111111111111111"
+        raise "The payment system is not responding"
+      end
+    end
+
+    def self.pay(cc_data, invoice_token)
+      sub = Spreedly::Subscriber.all.last
+      sub[:active] = true
+    end
+
+    def subscriber
+      @subscriber ||=  Subscriber.new(@subscriber_data.merge(:active => false))
+    end
+
+    def line_items
+      if @attributes[:invoice][:subscription_plan_id].to_s == "4"
+        @line_items = [
+          Spreedly::LineItem.new,
+          Spreedly::LineItem.new
+        ]
+      else
+        @line_items = [Spreedly::LineItem.new]
+      end
+    end
+
+  end
+
+  class LineItem < Resource
+    self.attributes = {
+      :amount => proc{BigDecimal("0.0")},
+      :description => proc{""}
+    }
   end
 end

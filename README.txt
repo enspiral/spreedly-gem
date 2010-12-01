@@ -18,20 +18,43 @@ the http://spreedly.com API. Created by Terralien[http://terralien.com].
 == SYNOPSIS:
 
   # For real
+
+  ## Genral API
   require 'spreedly'  
   Spreedly.configure('site short name', 'crazy hash token')
   url = Spreedly.subscribe_url('customer id', 'plan id')
   subscriber = Spreedly::Subscriber.find('customer id')
   subscriber.active?
-  
+
+  ## Payment API
+  invoice = Spreedly::Invoice.create!('plan_id', :subscriber => { :customer_id => 'customer_id, :email => "how@hot.com"})
+  puts invoice.closed? # Nope!
+  invoice.pay(credit_card)
+  puts invoice.closed? # Yep!
+
+  OR 
+
+  invoice = Spreedly::Invoice.create!('plan_id', :subscriber => { :customer_id => 'customer_id, :email => "how@hot.com"})
+  Spreedly::Invoice.pay(credit_card, invoice.token)
+  Spreedly::Subscriber.find(customer_id).active? # Nope!
+  Spreedly::Invoice.pay(credit_card, invoice.token)
+  Spreedly::Subscriber.find(customer_id).active? # Yep!
+
+
   # For fast tests
   require 'spreedly/mock'
   Spreedly.configure('site short name', 'crazy hash token')
   url = Spreedly.subscribe_url('customer id', 'plan id')
   subscriber = Spreedly::Subscriber.find('customer id')
   subscriber.active?
-  
+
 Yup, they're exactly the same except for the require and the speed!
+
+  ## Note
+  The mocks for the payment API don't mimic spreedly's logic, they 
+  simply make the tests pass. In Real mode, all passes with
+  flying colors, but at 10000000000000% less speed.
+  
 
 == REQUIREMENTS:
 
